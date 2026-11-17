@@ -1,21 +1,21 @@
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useCallback } from 'react';
 
-import { useQuery } from '@/db/changes';
 import { photosRepo, type PhotoPatch } from '@/db/repositories/photos';
-import { deletePhotoFiles } from '@/services/photoFiles';
+import { requestSync } from '@/lib/queryClient';
+import { deletePhotoFile } from '@/services/photoFiles';
 
-/** Lectura de UNA foto (se refresca tras cada escritura) + acciones de edicion. */
+/** Lectura reactiva de UNA foto + acciones de edicion. */
 export function usePhotoDetail(id: number | null) {
-  const { data } = useQuery(
-    () => (id === null ? Promise.resolve(undefined) : photosRepo.findById(id)),
-    undefined,
-    [id],
-  );
-  const photo = id === null ? undefined : data;
+  // id -1 nunca existe: evita una consulta invalida cuando aun no hay id
+  const { data } = useLiveQuery(photosRepo.byIdQuery(id ?? -1), [id]);
+  const photo = id === null ? undefined : data[0];
 
   const update = useCallback(
     async (patch: PhotoPatch) => {
-      if (id !== null) await photosRepo.update(id, patch);
+      if (id === null) return;
+      await photosRepo.update(id, patch);
+      requestSync();
     },
     [id],
   );
@@ -24,7 +24,7 @@ export function usePhotoDetail(id: number | null) {
     if (id === null) return;
     const current = await photosRepo.findById(id);
     await photosRepo.remove(id);
-    if (current) await deletePhotoFiles([current.storagePath]);
+    if (current) deletePhotoFile(current.uri);
   }, [id]);
 
   return { photo, update, remove };

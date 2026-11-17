@@ -1,28 +1,19 @@
-import { notifyChange } from '@/db/changes';
-import { toAlbum, type Album, type AlbumRow } from '@/db/schema';
-import { supabase } from '@/lib/supabase';
+import { asc, eq } from 'drizzle-orm';
+
+import { db } from '@/db/client';
+import { albums } from '@/db/schema';
 
 export const albumsRepo = {
-  async list(): Promise<Album[]> {
-    const { data, error } = await supabase
-      .from('albums')
-      .select('*')
-      .order('name', { ascending: true })
-      .returns<AlbumRow[]>();
-    if (error) throw error;
-    return data.map(toAlbum);
+  listQuery() {
+    return db.select().from(albums).orderBy(asc(albums.name));
   },
 
-  async create(name: string): Promise<void> {
-    const { error } = await supabase.from('albums').insert({ name });
-    if (error) throw error;
-    notifyChange();
+  create(name: string) {
+    return db.insert(albums).values({ name });
   },
 
-  // Gracias a on delete set null sus fotos quedan sin album, no se borran
-  async remove(id: number): Promise<void> {
-    const { error } = await supabase.from('albums').delete().eq('id', id);
-    if (error) throw error;
-    notifyChange();
+  // Gracias a onDelete: 'set null' sus fotos quedan sin album, no se borran
+  remove(id: number) {
+    return db.delete(albums).where(eq(albums.id, id));
   },
 };

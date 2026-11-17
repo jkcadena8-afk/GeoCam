@@ -15,6 +15,13 @@
       "when": 1791762073197,
       "tag": "0001_nota_favorito",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794270274412,
+      "tag": "0002_sincronizacion",
+      "breakpoints": true
     }
   ]
 }

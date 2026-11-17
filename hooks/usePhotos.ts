@@ -1,9 +1,10 @@
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useCallback, useMemo } from 'react';
 
-import { useQuery } from '@/db/changes';
 import { photosRepo } from '@/db/repositories/photos';
 import type { Photo } from '@/db/schema';
-import { deletePhotoFiles, uploadPhoto } from '@/services/photoFiles';
+import { requestSync } from '@/lib/queryClient';
+import { deletePhotoFile, persistPhoto } from '@/services/photoFiles';
 import type { Coords, GeoPhotoSource } from '@/types/geo';
 
 /** Foto con coordenadas garantizadas (sin `?? 0`: ver `LocatedPhoto` en types/geo.ts). */
@@ -29,43 +30,42 @@ export interface UsePhotosResult {
   clearAll: () => Promise<void>;
 }
 
-const NO_PHOTOS: Photo[] = [];
-
 export function usePhotos(): UsePhotosResult {
-  const { data: photos, error } = useQuery(() => photosRepo.list(), NO_PHOTOS);
-  const { data: located } = useQuery(() => photosRepo.listWithLocation(), NO_PHOTOS);
+  const { data: photos, error } = useLiveQuery(photosRepo.listQuery());
+  const { data: located } = useLiveQuery(photosRepo.withLocationQuery());
 
   // El filtro SQL ya garantiza coordenadas; el type guard estrecha el tipo sin `as`
   const photosWithLocation = useMemo(() => located.filter(hasLocation), [located]);
 
   const addPhoto = useCallback(async ({ uri, coords, source }: AddPhotoInput) => {
-    // 1) Imagen a Storage  2) Registro en Postgres con la URL publica
-    const { storagePath, publicUrl } = await uploadPhoto(uri);
+    // 1) Archivo permanente  2) Registro en SQLite con la nueva ruta
+    const permanentUri = persistPhoto(uri);
     try {
       await photosRepo.create({
-        uri: publicUrl,
-        storagePath,
+        uri: permanentUri,
         latitude: coords?.latitude ?? null,
         longitude: coords?.longitude ?? null,
         accuracy: coords?.accuracy ?? null,
         source,
       });
     } catch (e) {
-      // Si falla el INSERT no se deja un archivo huerfano en el bucket
-      await deletePhotoFiles([storagePath]);
+      // Si falla el INSERT no se deja un archivo huerfano
+      deletePhotoFile(permanentUri);
       throw e;
     }
+    requestSync();
   }, []);
 
   const removePhoto = useCallback(async (id: number) => {
     const photo = await photosRepo.findById(id);
     await photosRepo.remove(id);
-    if (photo) await deletePhotoFiles([photo.storagePath]);
+    if (photo) deletePhotoFile(photo.uri);
   }, []);
 
   const clearAll = useCallback(async () => {
-    const paths = await photosRepo.clearAll();
-    await deletePhotoFiles(paths);
+    const all = await photosRepo.listAll();
+    await photosRepo.clearAll();
+    all.forEach((p) => deletePhotoFile(p.uri));
   }, []);
 
   return { photos, photosWithLocation, error, addPhoto, removePhoto, clearAll };

@@ -5,6 +5,7 @@ import { Tabs } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useSync } from '@/hooks/useSync';
 
 /**
  * Navegación por pestañas.
@@ -12,6 +13,9 @@ import { useColorScheme } from '@/components/useColorScheme';
  */
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  // Aqui y no en una pestana: las pestanas se montan al visitarlas y la
+  // sincronizacion debe correr desde que se abre la app
+  useSync();
 
   return (
     <Tabs

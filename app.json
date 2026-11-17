@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GeoCam",
+    "name": "GeoCam (versión vieja)",
     "slug": "geocam",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -69,7 +69,8 @@
           "backgroundColor": "#0b1020"
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

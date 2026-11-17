@@ -6,12 +6,16 @@ import { Text, View } from '@/components/Themed';
 export default function NotFoundScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Oops!' }} />
+      <Stack.Screen options={{ title: 'Pantalla no encontrada' }} />
       <View style={styles.container}>
-        <Text style={styles.title}>This screen does not exist.</Text>
+        <Text style={styles.title}>Esta pantalla no existe.</Text>
+        <Text style={styles.text}>
+          Esta es la versión vieja de GeoCam (Semana 9). La versión nueva, con el asistente IA, es el proyecto
+          SEMANA 10/geocam-ve.
+        </Text>
 
         <Link href="/(tabs)/geocam" style={styles.link}>
-          <Text style={styles.linkText}>Go to home screen!</Text>
+          <Text style={styles.linkText}>Ir al inicio</Text>
         </Link>
       </View>
     </>
@@ -28,6 +32,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  text: {
+    marginTop: 10,
+    fontSize: 14,
+    textAlign: 'center',
+    opacity: 0.8,
   },
   link: {
     marginTop: 15,

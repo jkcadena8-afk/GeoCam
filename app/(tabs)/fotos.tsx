@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { SyncIndicator } from '@/components/SyncIndicator';
 import { useAlbums } from '@/hooks/useAlbums';
 import { usePhotoList } from '@/hooks/usePhotoList';
 
@@ -37,6 +38,8 @@ export default function FotosScreen() {
 
   return (
     <View style={styles.container}>
+      <SyncIndicator />
+
       <TextInput
         style={styles.search}
         placeholder="Buscar en las notas"

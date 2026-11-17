@@ -1,67 +1,42 @@
-/**
- * Tipos de dominio. La BD vive en Supabase (ver `supabase/schema.sql`);
- * aqui solo se describen las filas ya traducidas a camelCase.
- */
+import { sqliteTable, integer, real, text } from 'drizzle-orm/sqlite-core';
 
-export interface Album {
-  id: number;
-  name: string;
-  createdAt: Date;
-}
+export const albums = sqliteTable('albums', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
 
-export interface Photo {
-  id: number;
-  /** URL publica de la imagen en Supabase Storage. */
-  uri: string;
-  /** Ruta dentro del bucket; se usa para borrar el archivo. */
-  storagePath: string;
-  latitude: number | null;
-  longitude: number | null;
-  accuracy: number | null;
-  source: 'camera' | 'gallery';
-  albumId: number | null;
-  note: string | null;
-  favorite: boolean;
-  createdAt: Date;
-}
+export const photos = sqliteTable('photos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  uri: text('uri').notNull(),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  accuracy: real('accuracy'),
+  source: text('source', { enum: ['camera', 'gallery'] }).notNull(),
+  // Al borrar un album sus fotos NO se borran: quedan sin album
+  albumId: integer('album_id').references(() => albums.id, { onDelete: 'set null' }),
+  note: text('note'),
+  favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  // Identidad compartida entre telefonos: el id autoincremental solo vale en este dispositivo.
+  // Es opcional solo por las filas anteriores a la migracion (ver ensureSyncFields).
+  clientId: text('client_id').unique(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  remotePath: text('remote_path'),
+  // Version que ya esta en la nube. Pendiente = vacio o anterior a updatedAt.
+  syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
+});
 
-/** Filas tal como las devuelve PostgREST (snake_case). */
-export interface AlbumRow {
-  id: number;
-  name: string;
-  created_at: string;
-}
+export const syncMeta = sqliteTable('sync_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
 
-export interface PhotoRow {
-  id: number;
-  uri: string;
-  storage_path: string;
-  latitude: number | null;
-  longitude: number | null;
-  accuracy: number | null;
-  source: 'camera' | 'gallery';
-  album_id: number | null;
-  note: string | null;
-  favorite: boolean;
-  created_at: string;
-}
-
-export function toAlbum(row: AlbumRow): Album {
-  return { id: row.id, name: row.name, createdAt: new Date(row.created_at) };
-}
-
-export function toPhoto(row: PhotoRow): Photo {
-  return {
-    id: row.id,
-    uri: row.uri,
-    storagePath: row.storage_path,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    accuracy: row.accuracy,
-    source: row.source,
-    albumId: row.album_id,
-    note: row.note,
-    favorite: row.favorite,
-    createdAt: new Date(row.created_at),
-  };
-}
+export type Album = typeof albums.$inferSelect;
+export type NewAlbum = typeof albums.$inferInsert;
+export type Photo = typeof photos.$inferSelect;
+export type NewPhoto = typeof photos.$inferInsert;

@@ -1,17 +1,16 @@
-import { notifyChange } from '@/db/changes';
-import { toPhoto, type Photo, type PhotoRow } from '@/db/schema';
-import { supabase } from '@/lib/supabase';
+import { randomUUID } from 'expo-crypto';
+import { and, desc, eq, gt, isNotNull, isNull, like, or } from 'drizzle-orm';
 
-export interface PhotoInput {
-  uri: string;
-  storagePath: string;
-  latitude: number | null;
-  longitude: number | null;
-  accuracy: number | null;
-  source: Photo['source'];
-}
+import { db } from '@/db/client';
+import { photos, type NewPhoto } from '@/db/schema';
 
-export type PhotoPatch = Partial<Pick<Photo, 'note' | 'favorite' | 'albumId'>>;
+export type PhotoInput = Omit<
+  NewPhoto,
+  'id' | 'createdAt' | 'clientId' | 'updatedAt' | 'remotePath' | 'syncedAt'
+>;
+export type PhotoPatch = Partial<Pick<NewPhoto, 'note' | 'favorite' | 'albumId'>>;
+export type RemotePhotoInput = Omit<NewPhoto, 'id' | 'albumId'>;
+export type RemotePhotoPatch = Pick<NewPhoto, 'note' | 'favorite' | 'updatedAt' | 'syncedAt'>;
 
 export interface PhotoFilters {
   search: string;
@@ -20,89 +19,102 @@ export interface PhotoFilters {
   onlyFavorites: boolean;
 }
 
-/** Escapa los comodines de ILIKE para que el texto se busque literal. */
-function escapeLike(term: string): string {
-  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
+const isPending = or(isNull(photos.syncedAt), gt(photos.updatedAt, photos.syncedAt));
 
-/** Unica capa que conoce Supabase: hooks y pantallas solo ven `Photo`. */
+/** Unica capa que conoce Drizzle: las funciones ...Query() devuelven la consulta sin ejecutarla. */
 export const photosRepo = {
-  async list(filters?: PhotoFilters): Promise<Photo[]> {
-    let query = supabase.from('photos').select('*');
+  listQuery(filters?: PhotoFilters) {
+    const conditions = [];
     if (filters) {
       const term = filters.search.trim();
-      if (term) query = query.ilike('note', `%${escapeLike(term)}%`);
-      if (filters.albumId !== null) query = query.eq('album_id', filters.albumId);
-      if (filters.onlyFavorites) query = query.eq('favorite', true);
+      if (term) conditions.push(like(photos.note, `%${term}%`));
+      if (filters.albumId !== null) conditions.push(eq(photos.albumId, filters.albumId));
+      if (filters.onlyFavorites) conditions.push(eq(photos.favorite, true));
     }
-    const { data, error } = await query
-      .order('created_at', { ascending: false })
-      .returns<PhotoRow[]>();
-    if (error) throw error;
-    return data.map(toPhoto);
+    return db
+      .select()
+      .from(photos)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(photos.createdAt));
   },
 
-  async listWithLocation(): Promise<Photo[]> {
-    const { data, error } = await supabase
-      .from('photos')
-      .select('*')
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null)
-      .order('created_at', { ascending: false })
-      .returns<PhotoRow[]>();
-    if (error) throw error;
-    return data.map(toPhoto);
+  withLocationQuery() {
+    return db
+      .select()
+      .from(photos)
+      .where(and(isNotNull(photos.latitude), isNotNull(photos.longitude)))
+      .orderBy(desc(photos.createdAt));
   },
 
-  async findById(id: number): Promise<Photo | undefined> {
-    const { data, error } = await supabase
-      .from('photos')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle<PhotoRow>();
-    if (error) throw error;
-    return data ? toPhoto(data) : undefined;
+  byIdQuery(id: number) {
+    return db.select().from(photos).where(eq(photos.id, id));
   },
 
-  async create(input: PhotoInput): Promise<void> {
-    const { error } = await supabase.from('photos').insert({
-      uri: input.uri,
-      storage_path: input.storagePath,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      accuracy: input.accuracy,
-      source: input.source,
-    });
-    if (error) throw error;
-    notifyChange();
+  pendingQuery() {
+    return db.select().from(photos).where(isPending);
   },
 
-  async update(id: number, patch: PhotoPatch): Promise<void> {
-    const row: Partial<PhotoRow> = {};
-    if (patch.note !== undefined) row.note = patch.note;
-    if (patch.favorite !== undefined) row.favorite = patch.favorite;
-    if (patch.albumId !== undefined) row.album_id = patch.albumId;
-    const { error } = await supabase.from('photos').update(row).eq('id', id);
-    if (error) throw error;
-    notifyChange();
+  listPending() {
+    return db.select().from(photos).where(isPending).all();
   },
 
-  async remove(id: number): Promise<void> {
-    const { error } = await supabase.from('photos').delete().eq('id', id);
-    if (error) throw error;
-    notifyChange();
+  findById(id: number) {
+    return db.select().from(photos).where(eq(photos.id, id)).get();
   },
 
-  /** Borra todas las filas y devuelve las rutas de Storage que quedan huerfanas. */
-  async clearAll(): Promise<string[]> {
-    const { data, error } = await supabase
-      .from('photos')
-      .delete()
-      .not('id', 'is', null)
-      .select('storage_path')
-      .returns<Pick<PhotoRow, 'storage_path'>[]>();
-    if (error) throw error;
-    notifyChange();
-    return data.map((r) => r.storage_path);
+  findByClientId(clientId: string) {
+    return db.select().from(photos).where(eq(photos.clientId, clientId)).get();
+  },
+
+  listAll() {
+    return db.select().from(photos).all();
+  },
+
+  create(data: PhotoInput) {
+    return db.insert(photos).values({ ...data, clientId: randomUUID(), updatedAt: new Date() });
+  },
+
+  /** La usa la UI: toda edicion marca la foto como pendiente. */
+  update(id: number, data: PhotoPatch) {
+    return db
+      .update(photos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(photos.id, id));
+  },
+
+  remove(id: number) {
+    return db.delete(photos).where(eq(photos.id, id));
+  },
+
+  clearAll() {
+    return db.delete(photos);
+  },
+
+  /** Rellena las fotos creadas antes de la migracion de sincronizacion. */
+  async ensureSyncFields() {
+    const rows = await db
+      .select()
+      .from(photos)
+      .where(or(isNull(photos.clientId), isNull(photos.updatedAt)))
+      .all();
+    for (const row of rows) {
+      await db
+        .update(photos)
+        .set({ clientId: row.clientId ?? randomUUID(), updatedAt: row.updatedAt ?? row.createdAt })
+        .where(eq(photos.id, row.id));
+    }
+  },
+
+  insertFromRemote(data: RemotePhotoInput) {
+    return db.insert(photos).values(data);
+  },
+
+  // applyRemote y markSynced nunca usan la hora actual: guardan la version que vino o se subio
+  applyRemote(id: number, data: RemotePhotoPatch) {
+    return db.update(photos).set(data).where(eq(photos.id, id));
+  },
+
+  markSynced(id: number, remotePath: string, syncedAt: Date) {
+    return db.update(photos).set({ remotePath, syncedAt }).where(eq(photos.id, id));
   },
 };

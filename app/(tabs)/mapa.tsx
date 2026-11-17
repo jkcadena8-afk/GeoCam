@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ComponentType, type RefAttributes } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
+import type { AndroidWebViewProps, IOSWebViewProps } from 'react-native-webview/lib/WebViewTypes';
 import { usePhotos } from '@/hooks/usePhotos';
 
 const CENTRO_POR_DEFECTO = { latitude: 11.5442, longitude: -72.9072 };
@@ -57,6 +58,12 @@ const HTML = `
 </html>
 `;
 
+// react-native-webview 14 intersecta tambien las props de Windows y el tipo resultante
+// colapsa a never con RN 0.88; aqui solo corre en iOS y Android.
+const MapWebView = WebView as unknown as ComponentType<
+  IOSWebViewProps & AndroidWebViewProps & RefAttributes<WebView>
+>;
+
 export default function MapaScreen() {
   const { photosWithLocation: photos } = usePhotos();
   const webViewRef = useRef<WebView>(null);
@@ -74,7 +81,7 @@ export default function MapaScreen() {
 
   return (
     <View style={styles.container}>
-      <WebView
+      <MapWebView
         ref={webViewRef}
         originWhitelist={['*']}
         source={{ html: HTML, baseUrl: 'https://localhost' }}

@@ -1,12 +1,10 @@
-import { useQuery } from '@/db/changes';
-import { photosRepo, type PhotoFilters } from '@/db/repositories/photos';
-import type { Photo } from '@/db/schema';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 
-const NO_PHOTOS: Photo[] = [];
+import { photosRepo, type PhotoFilters } from '@/db/repositories/photos';
 
 /** Lista filtrada: se recalcula sola cuando cambian los filtros (C4). */
 export function usePhotoList(filters: PhotoFilters) {
-  const { data, error } = useQuery(() => photosRepo.list(filters), NO_PHOTOS, [
+  const { data, error } = useLiveQuery(photosRepo.listQuery(filters), [
     filters.search,
     filters.albumId,
     filters.onlyFavorites,

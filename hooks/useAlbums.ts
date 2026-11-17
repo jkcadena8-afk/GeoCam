@@ -1,13 +1,10 @@
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useCallback } from 'react';
 
-import { useQuery } from '@/db/changes';
 import { albumsRepo } from '@/db/repositories/albums';
-import type { Album } from '@/db/schema';
-
-const NO_ALBUMS: Album[] = [];
 
 export function useAlbums() {
-  const { data: albums } = useQuery(() => albumsRepo.list(), NO_ALBUMS);
+  const { data: albums } = useLiveQuery(albumsRepo.listQuery());
 
   const createAlbum = useCallback(async (name: string): Promise<string | null> => {
     const clean = name.trim();
@@ -15,12 +12,9 @@ export function useAlbums() {
     try {
       await albumsRepo.create(clean);
       return null;
-    } catch (e) {
-      // 23505 = unique_violation en Postgres
-      if (typeof e === 'object' && e !== null && 'code' in e && e.code === '23505') {
-        return 'Ya existe un album con ese nombre.';
-      }
-      return 'No se pudo crear el album. Revisa la conexion.';
+    } catch {
+      // name es unique: el unico fallo esperable es un duplicado
+      return 'Ya existe un album con ese nombre.';
     }
   }, []);
 
